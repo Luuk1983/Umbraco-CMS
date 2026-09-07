@@ -1,29 +1,48 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Umbraco.Cms.Infrastructure.Persistence;
 using static Umbraco.Cms.Persistence.SqlServer.TSqlQuoting;
 
 namespace Umbraco.Cms.Persistence.SqlServer.Services;
 
+/// <summary>
+///     Implements <see cref="IDatabaseCreator" /> for SQL Server.
+/// </summary>
 public class SqlServerDatabaseCreator : IDatabaseCreator
 {
+    /// <inheritdoc />
     public string ProviderName => Constants.ProviderName;
 
+    /// <summary>
+    ///     Creates a SQL Server database, either from a data file or by name.
+    /// </summary>
+    /// <param name="connectionString">The connection string to use for creating the database.</param>
+    /// <remarks>
+    ///     <para>
+    ///         When the connection string carries an <c>AttachDbFilename</c> that does not yet exist, the database is
+    ///         created at that path and then detached, leaving the data and log files in place for the runtime to
+    ///         attach on demand. Otherwise a database is created by name, if one does not already exist.
+    ///     </para>
+    ///     <para>
+    ///         Neither statement can be parameterised, so every value is quoted with
+    ///         <see cref="TSqlQuoting.QuotedName" />.
+    ///     </para>
+    /// </remarks>
     public void Create(string connectionString)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
 
-        // Get connection string without database specific information
+        // Get connection string without database specific information.
         var masterBuilder = new SqlConnectionStringBuilder(builder.ConnectionString)
         {
             AttachDBFilename = string.Empty,
-            InitialCatalog = string.Empty
+            InitialCatalog = string.Empty,
         };
         var masterConnectionString = masterBuilder.ConnectionString;
 
         string fileName = builder.AttachDBFilename,
             database = builder.InitialCatalog;
 
-        // Create database
+        // Create database.
         if (!string.IsNullOrEmpty(fileName) && !File.Exists(fileName))
         {
             if (string.IsNullOrWhiteSpace(database))
@@ -32,12 +51,14 @@ public class SqlServerDatabaseCreator : IDatabaseCreator
                 database = "Umbraco-" + Guid.NewGuid();
             }
 
-            // Specify the log file explicitly rather than letting SQL Server derive it from the
-            // data file path. That derivation drops the directory separator in front of a directory
-            // whose name starts with a dot, so a data file in "C:\repo\.tools\Umbraco.mdf" yields
-            // the log file "C:\repo.tools\Umbraco_log.ldf", which fails with operating system error
-            // 3 because the directory does not exist. The name and location used here are the ones
-            // SQL Server derives itself for any path without such a directory.
+            // Specify the log file explicitly rather than letting SQL Server derive it from the data
+            // file path. That derivation mishandles dot segments: one starting with a single dot is
+            // merged into the segment before it, so "C:\repo\.tools" becomes "C:\repo.tools", and
+            // ".." consumes one segment too many. Where the resulting directory does not exist,
+            // creation fails with operating system error 3; where it happens to exist, creation
+            // succeeds and the log is written outside the data file's directory, leaving a database
+            // whose files are no longer together. Affected engines are 2017 and later, so a
+            // correctly derived path on an earlier one is not evidence that this is unnecessary.
             var logName = GetLogName(fileName);
             var logFileName = GetLogFileName(fileName);
 
@@ -84,11 +105,15 @@ public class SqlServerDatabaseCreator : IDatabaseCreator
         => Path.GetFileNameWithoutExtension(dataFileName) + "_log";
 
     /// <summary>
-    ///     Gets the log (LDF) file path SQL Server assigns to a database created from the specified
-    ///     data file, which sits next to the data file.
+    ///     Gets the log (LDF) file path for the specified data file, beside the data file.
     /// </summary>
     /// <param name="dataFileName">The data (MDF) file name.</param>
     /// <returns>The log file path, for example "C:\Data\Umbraco_log.ldf" for "C:\Data\Umbraco.mdf".</returns>
+    /// <remarks>
+    ///     This is where SQL Server places the log itself for the paths it derives correctly. Stating
+    ///     it explicitly avoids the derivation described in <see cref="Create" />, so this deliberately
+    ///     does not reproduce what SQL Server derives for the paths it gets wrong.
+    /// </remarks>
     internal static string GetLogFileName(string dataFileName)
     {
         var logFileName = GetLogName(dataFileName) + ".ldf";
