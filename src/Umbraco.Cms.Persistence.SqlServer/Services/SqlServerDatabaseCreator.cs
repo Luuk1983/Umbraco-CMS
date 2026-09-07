@@ -1,5 +1,6 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Umbraco.Cms.Infrastructure.Persistence;
+using static Umbraco.Cms.Persistence.SqlServer.TSqlQuoting;
 
 namespace Umbraco.Cms.Persistence.SqlServer.Services;
 
@@ -44,10 +45,11 @@ public class SqlServerDatabaseCreator : IDatabaseCreator
             connection.Open();
 
             using var command = new SqlCommand(
-                $"CREATE DATABASE [{database}] ON (NAME='{database}', FILENAME='{fileName}') " +
-                $"LOG ON (NAME='{logName}', FILENAME='{logFileName}');" +
-                $"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;" +
-                $"EXEC sp_detach_db @dbname='{database}';",
+                $"CREATE DATABASE {QuotedName(database)} " +
+                $"ON (NAME=N{QuotedName(database, '\'')}, FILENAME=N{QuotedName(fileName, '\'')}) " +
+                $"LOG ON (NAME=N{QuotedName(logName, '\'')}, FILENAME=N{QuotedName(logFileName, '\'')});" +
+                $"ALTER DATABASE {QuotedName(database)} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;" +
+                $"EXEC sp_detach_db @dbname=N{QuotedName(database, '\'')};",
                 connection);
             command.ExecuteNonQuery();
 
@@ -59,8 +61,8 @@ public class SqlServerDatabaseCreator : IDatabaseCreator
             connection.Open();
 
             using var command = new SqlCommand(
-                $"IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{database}') " +
-                $"CREATE DATABASE [{database}];",
+                $"IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = N{QuotedName(database, '\'')}) " +
+                $"CREATE DATABASE {QuotedName(database)};",
                 connection);
             command.ExecuteNonQuery();
 
