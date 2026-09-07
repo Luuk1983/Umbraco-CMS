@@ -45,6 +45,22 @@ public class SqlServerDatabaseCreatorTests
     }
 
     [Test]
+    public void Can_Derive_The_Log_File_Beside_The_Data_File_When_The_Path_Contains_A_Parent_Segment()
+    {
+        // SQL Server's own derivation consumes one segment too many here, resolving the log of
+        // "repo\a\..\b\Umbraco.mdf" to "repo\Umbraco_log.ldf" rather than "repo\b\Umbraco_log.ldf".
+        // The rule the derivation has to uphold is that the log sits in the same directory as the
+        // data file, whatever dot segments the path happens to contain.
+        var dataFileName = Path.Combine("repo", "a", "..", "b", "Umbraco.mdf");
+
+        var logFileName = SqlServerDatabaseCreator.GetLogFileName(dataFileName);
+
+        Assert.AreEqual(
+            Path.GetDirectoryName(Path.GetFullPath(dataFileName)),
+            Path.GetDirectoryName(Path.GetFullPath(logFileName)));
+    }
+
+    [Test]
     public void Can_Derive_The_Log_File_When_The_Data_File_Has_No_Directory()
         => Assert.AreEqual("Umbraco_log.ldf", SqlServerDatabaseCreator.GetLogFileName("Umbraco.mdf"));
 
